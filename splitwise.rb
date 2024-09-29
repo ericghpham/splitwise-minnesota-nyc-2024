@@ -13,27 +13,36 @@ COLUMN_AMOUNT_PER_PERSON = "Per Person"
 #   Per Person: the amount a person owes the payer
 #   [Person]: the name of the person who owes the payer; the column should should be either true iff this person owes the payer, false otherwise
 def parse_csv(file_path)
-  items = []
+  expenses = []
 
   # Read the CSV file
   CSV.foreach(file_path, headers: true) do |row|
-    paid_by = row[COLUMN_PAID_BY]
-    amount = row[COLUMN_AMOUNT_PER_PERSON]
-    amount_cents = (amount.to_f * 100).to_i
-
-    # For each person who owes, create an entry
-    row.each do |column_name, value|
-      next if column_name == COLUMN_PAID_BY || column_name == COLUMN_AMOUNT_PER_PERSON || column_name == paid_by
-
-      items << {
-        paid: paid_by,
-        amount_cents: amount_cents,
-        owes: column_name
-      }
-    end
+    expense = create_expenses(row)
+    next unless expense
+    expenses << create_expenses(row).compact
   end
 
-  items
+  expenses.flatten
+end
+
+def create_expenses(row)
+  expenses = []
+  paid_by = row[COLUMN_PAID_BY]
+  amount = row[COLUMN_AMOUNT_PER_PERSON]
+  amount_cents = (amount.to_f * 100).to_i
+
+  # For each person who owes, create an entry
+  row.each do |column_name, value|
+    next if column_name == COLUMN_PAID_BY || column_name == COLUMN_AMOUNT_PER_PERSON || column_name == paid_by
+
+    expenses << {
+      paid: paid_by,
+      amount_cents: amount_cents,
+      owes: column_name
+    }
+  end
+
+  expenses
 end
 
 def summarize_expenses(expenses)
@@ -42,12 +51,21 @@ def summarize_expenses(expenses)
 
   # Loop through the expenses to aggregate totals
   expenses.each do |expense|
-    paid_by = expense[:paid]
-    owes = expense[:owes]
+    payer = expense[:paid]
+    ower = expense[:owes]
     amount_cents = expense[:amount_cents]
 
-    # Add the amount owed by each person
-    owed_totals[owes][paid_by] += amount_cents
+    debt = owed_totals[ower][payer] += amount_cents
+    reverse_debt = owed_totals[payer][ower]
+    net_debt = debt - reverse_debt
+
+    if net_debt > 0
+      owed_totals[ower][payer] = net_debt
+      owed_totals[payer].delete(ower)
+    else
+      owed_totals[payer][ower] = -net_debt
+      owed_totals[ower].delete(payer)
+    end
   end
 
   # Output the totals in a readable format
@@ -63,4 +81,3 @@ end
 file_path = "expenses.csv"
 expenses = parse_csv(file_path)
 summarize_expenses(expenses)
-# puts result
